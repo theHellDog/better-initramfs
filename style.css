@@ -1,0 +1,103 @@
+/*
+css for docutils-generated rst documents.
+*/
+
+body {
+	background-color: #3d3c41;
+	font-family: Trebuchet MS,Liberation Sans,DejaVu Sans,sans-serif;
+}
+
+div.document {
+	background-color: #f3f2f2;
+	margin: 30px auto 20px auto;
+	width: 800px;
+	padding-left: 20px;
+	padding-right: 20px;
+	padding-top: 5px;
+	padding-bottom: 10px;
+}
+
+/* text block, code block? */
+pre.literal-block {
+	white-space: pre-line;
+	background-color: #F0F5FA;
+	olor:#000000;
+	padding-top: 2px;
+	padding-bottom: 2px;
+	padding-left: 5px;
+	border:1px solid #C2CFDF;
+	border-left:10px solid #C2CFDF;	
+	margin: 10px;
+	font-family: Consolas,Menlo,Monaco,Lucida Console,Liberation Mono,DejaVu Sans Mono,Bitstream Vera Sans Mono,Courier;
+}
+
+h1 {
+	background-color: #ddd;
+	color: #9b0000;
+	padding: 2px;
+	padding-left: 10px;
+	font-size: 32px;
+}
+
+a {
+	color: #20435c;
+	text-decoration: none;
+}
+
+h1 a {
+	text-decoration: none;
+	color: inherit;
+}
+
+dt { 
+	font-weight: bold;
+}
+
+
+/* Note boxes from dokuwiki's note plugin */
+.note, .important, .warning, .tip {
+  margin: 2em;
+  margin-left: auto;
+  margin-right: auto;
+  width: 70% !important;
+  min-height: 40px;
+  clear: both;
+  text-align: justify;
+  vertical-align: middle;
+  border-collapse: collapse;
+  padding: 15px 20px 15px 80px;
+  background-position: 20px 50%;
+  background-repeat: no-repeat;
+  -moz-border-radius: 20px;
+  -khtml-border-radius: 20px;
+  border-radius: 20px;
+}
+
+.note p.admonition-title, .important p.admonition-title, .warning p.admonition-title, .tip p.admonition-title {
+	display: none;
+}
+
+ 
+.note {
+  border: 1px solid #99D;
+  background-color: #eef;
+  background-image: url(note.png);
+}
+ 
+.important {
+  border: 1px solid #ffd300;
+  background-color: #ffc;
+  background-image: url(important.png);
+}
+ 
+.warning {
+  border: 1px solid #d99;
+  background-color: #fdd;
+  background-image: url(warning.png);
+}
+ 
+.tip {
+  border: 1px solid #9d9;
+  background-color: #dfd;
+  background-image: url(tip.png);
+}
