@@ -1,7 +1,7 @@
 #!/bin/sh
 # -*- mode: shell-script; coding: utf-8-emacs-unix; sh-basic-offset: 8; indent-tabs-mode: t -*-
 # This code is under Simplified BSD License, see LICENSE for more info
-# Copyright (c) 2010, Piotr Karbowski
+# Copyright (c) 2010-2012, Piotr Karbowski
 # All rights reserved.
 
 einfo() { echo -ne "\033[1;30m>\033[0;36m>\033[1;36m> \033[0m${@}\n" ;}
@@ -22,7 +22,11 @@ rescueshell() {
 	ewarn "Rescue Shell (busybox's /bin/sh)"
 	ewarn "To reboot, press 'control-alt-delete'."
 	ewarn "If you wish resume booting process, run 'resume-boot'."
-	/bin/sh --login
+	if [ -c '/dev/tty1' ]; then
+		setsid sh -c 'exec sh --login </dev/tty1 >/dev/tty1 2>&1'
+	else
+		sh --login
+	fi
 	echo
 	rm /rescueshell.pid
 	}
@@ -38,7 +42,7 @@ run() {
 }
 
 get_opt() {
-	echo "$@" | cut -d "=" -f 2-
+	echo "${*#*=}"
 }
 
 resolve_device() {
@@ -58,7 +62,7 @@ resolve_device() {
 use() {
 	name="$(eval echo \$$1)"
 	# Check if $name isn't empty and if $name isn't set to false or zero.
-	if [ -n "${name}" ] && [ "${name}" != 'false' ] && [ "${name}" != '0' ]; then
+	if [ -n "${name}" ] && [ "${name}" != 'false' ]; then
 		if [ -n "$2" ]; then
 			$2
 		else
@@ -86,13 +90,27 @@ musthave() {
 
 dodir() {
 	for dir in "$@"; do
-		run mkdir -p "$dir"
+		run mkdir -m 700 -p "${dir}"
 	done
 }
 
 loadkeymap() {
 	if [ -f /keymap ]; then
 		loadkmap < /keymap
+	fi
+}
+
+get_majorminor() {
+	local device="$1"
+	musthave device
+
+	local major_hex="$(stat -L -c '%t' "${device}")"
+	local minor_hex="$(stat -L -c '%T' "${device}")"
+
+	musthave major_hex minor_hex
+
+	if [ -n "${major_hex}" ] && [ -n "${minor_hex}" ]; then
+		printf '%u:%u\n' "0x${major_hex}" "0x${minor_hex}"
 	fi
 }
 
@@ -104,15 +122,30 @@ InitializeLUKS() {
 
 	musthave enc_root
 	
-	einfo "Opening encrypted partition and mapping to /dev/mapper/enc_root."
+	local IFS=":"
+	local enc_num='1'
+	local dev_name="enc_root"
+	for enc_dev in ${enc_root}; do
+		if ! [ "${enc_num}" = '1' ]; then
+			dev_name="enc_root${enc_num}"
+		fi
 
-	resolve_device enc_root
+		resolve_device "${enc_dev}"
 
-	# Hack for cryptsetup which trying to run /sbin/udevadm.
-	run echo -e "#!/bin/sh\nexit 0" > /sbin/udevadm
-	run chmod 755 /sbin/udevadm
+		einfo "Opening encrypted partition '${enc_dev##*/}' and mapping to '/dev/mapper/${dev_name}'."
 
-	run cryptsetup luksOpen "${enc_root}" enc_root
+		# Hack for cryptsetup which trying to run /sbin/udevadm.
+		run echo -e "#!/bin/sh\nexit 0" > /sbin/udevadm
+		run chmod 755 /sbin/udevadm
+
+		local crypsetup_args=""
+		if use luks_trim; then
+			cryptsetup_args="${cryptsetup_args} --allow-discards"
+		fi
+
+		run cryptsetup ${cryptsetup_args} luksOpen "${enc_dev}" "${dev_name}"
+		enc_num="$((enc_num+1))"
+	done
 }
 
 InitializeLVM() {
@@ -129,6 +162,18 @@ InitializeSoftwareRaid() {
 	fi
 	run mdadm --assemble --scan
 	run mdadm --auto-detect
+}
+
+SwsuspResume() {
+	musthave resume
+	resolve_device resume
+	if [ -f '/sys/power/resume' ]; then
+		local resume_majorminor="$(get_majorminor "${resume}")"
+		musthave resume_majorminor
+		echo "${resume_majorminor}" > /sys/power/resume
+	else
+		ewarn "Apparently this kernel does not support suspend."
+	fi
 }
 
 UswsuspResume() {
@@ -157,7 +202,12 @@ setup_sshd() {
 	einfo "Setting ${sshd_ipv4} on ${sshd_interface} ..."
 	run ip addr add "${sshd_ipv4}" dev "${sshd_interface}"
 	run ip link set up dev "${sshd_interface}"
-	
+
+	if [ -n "${sshd_ipv4_gateway}" ]; then
+		einfo "Setting default routing via '${sshd_ipv4_gateway}' ..."
+		run ip route add default via "${sshd_ipv4_gateway}" dev "${sshd_interface}"
+	fi
+
 	# Prepare /dev/pts.
 	einfo "Mounting /dev/pts ..."
 	if ! [ -d /dev/pts ]; then run mkdir /dev/pts; fi
@@ -177,7 +227,7 @@ setup_sshd() {
 	if [ -f /authorized_keys ]; then
 		run cp /authorized_keys /root/.ssh/authorized_keys
 	else
-		eerror "Missing /autorized_keys file, you will be no able login via sshd."
+		eerror "Missing /authorized_keys file, you will be no able login via sshd."
 		rescueshell
 	fi
 
@@ -211,6 +261,9 @@ cleanup() {
 		fi
 		einfo "Cleaning up, killing dropbear and bringing down the network ..."
 		run pkill -9 dropbear > /dev/null 2>&1
+		if [ -n "${sshd_ipv4_gateway}" ]; then
+			run ip route del default via "${sshd_ipv4_gateway}" dev "${sshd_interface}"
+		fi
 		run ip addr del "${sshd_ipv4}" dev "${sshd_interface}" > /dev/null 2>&1
 	fi
 }
@@ -308,6 +361,7 @@ eumount() {
 moveDev() {
 	einfo "Moving /dev to /newroot/dev..."
 	if mountpoint -q /dev/pts; then umount /dev/pts; fi
+	if use mdev; then run echo '' > /proc/sys/kernel/hotplug; fi
 	run mount --move /dev /newroot/dev
 }
 
