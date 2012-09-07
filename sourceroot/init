@@ -1,7 +1,7 @@
 #!/bin/sh
 # -*- mode: shell-script; coding: utf-8-emacs-unix; sh-basic-offset: 8; indent-tabs-mode: t -*-
 # This code is under Simplified BSD License, see LICENSE for more info
-# Copyright (c) 2010, Piotr Karbowski
+# Copyright (c) 2010-2012, Piotr Karbowski
 # All rights reserved.
 
 # Load functions.
@@ -22,6 +22,9 @@ run dodir /dev /newroot /sbin /proc /sys /etc /var/log /var/run
 
 # Clear the screen
 clear
+
+# Save IFS so we can easly restore it if we ever change it.
+readonly default_ifs="${IFS}"
 
 # Basic
 kernelver="$(uname -r)"
@@ -62,6 +65,9 @@ for i in $(cat /proc/cmdline); do
 		rescueshell)
 			rescueshell=true
 		;;
+		swsusp)
+			swsusp=true
+		;;
 		uswsusp)
 			uswsusp=true
 		;;
@@ -97,11 +103,17 @@ for i in $(cat /proc/cmdline); do
 		sshd_ipv4\=*)
 			sshd_ipv4=$(get_opt $i)
 		;;
+		sshd_ipv4_gateway\=*)
+			sshd_ipv4_gateway=$(get_opt $i)
+		;;
 		rootdelay\=*)
 			rootdelay=$(get_opt $i)
 		;;
 		mdev)
 			mdev=true
+		;;
+		luks_trim)
+			luks_trim=true
 		;;
 	esac
 done
@@ -117,6 +129,7 @@ use softraid InitializeSoftwareRaid
 use lvm InitializeLVM
 use luks InitializeLUKS && use lvm InitializeLVM
 use rescueshell rescueshell
+use swsusp && SwsuspResume
 use uswsusp && UswsuspResume
 use tuxonice TuxOnIceResume
 emount /newroot
