@@ -89,6 +89,8 @@ lvm
   Scan all disks for volume groups and activate them.
 luks
   do ``cryptsetup luksOpen`` on enc_root variable.
+gpg
+  Decrypt GPG key file (need to put into sourceroot/etc/key.gpg) then do ``cryptsetup luksOpen`` on enc_root variable with decrypted key.
 enc_root=<device>
   for example ``/dev/sda2`` if sda2 is your encrypted rootfs. This variable is ignored if luks isn't enabled. You can specify multiple devices with colon as spearator, like ``enc_root=/dev/sda2:/dev/sdb2:/dev/vda1``.
 root=<device>
