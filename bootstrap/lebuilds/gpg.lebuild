@@ -1,0 +1,41 @@
+#!/bin/sh
+name='gnupg'
+version='1.4.12'
+sources=( "http://mirrors.dotsrc.org/gcrypt/$name/$name-$version.tar.bz2" )
+homepage='http://www.gnupg.org/'
+license='GPLv3'
+
+build_cmd="
+	cd /source/${name}-${version} && \
+	./configure --prefix=/usr \
+	--mandir=/usr/man \
+	--infodir=/usr/share/info \
+	--datadir=/usr/share \
+	--sysconfdir=/etc \
+	--localstatedir=/var/lib \
+	--libdir=/usr/lib \
+	--docdir=/usr/share/doc/$name-$version \
+	--disable-ldap \
+	--enable-mailto \
+	--enable-hkp \
+	--enable-finger \
+	--without-included-zlib \
+	--without-libcurl \
+	--disable-nls \
+	--enable-bzip2 \
+	--disable-card-support \
+	--disable-selinux-support \
+	--without-capabilities \
+	--with-readline \
+	--without-libusb \
+	--enable-static-rnd=linux \
+	--libexecdir=/usr/libexec \
+	--enable-noexecstack LDFLAGS=-static && \
+	make -j ${cores_num:-1}
+"
+
+deploy="/source/${name}-${version}/g10/gpg"
+
+fetch_source
+install_source
+build_source

@@ -78,6 +78,9 @@ process_commandline_options() {
 			luks)
 				luks=true
 			;;
+			gpg)
+				gpg=true
+			;;
 			lvm)
 				lvm=true
 			;;
@@ -202,6 +205,26 @@ InitializeLUKS() {
 		rescueshell
 	fi
 
+	if use gpg; then
+		if [ ! -f /bin/gpg ]; then
+			eerror "There is no gpg binary into initramfs image."
+			rescueshell
+		fi
+		if [ ! -f /etc/key.gpg ]; then
+			eerror "There is no key file into initramfs image."
+			rescueshell
+		fi
+
+		run cp -a /dev/console /dev/tty
+
+		run /bin/gpg -o /root/key --decrypt /etc/key.gpg 2>/dev/null
+
+		if [ ! -f /root/key ]; then
+			eerror "You entered wrong passphrase or something went wrong and there is no decrypted key file!"
+			rescueshell
+		fi
+	fi
+
 	musthave enc_root
 	
 	local enc_num='1'
@@ -231,11 +254,19 @@ InitializeLUKS() {
 			askpass "Enter passphrase for ${enc_dev}: " | run cryptsetup --tries 1 --key-file=- luksOpen ${cryptsetup_args} "${enc_dev}" "${dev_name}"
 			# Remove the fifo, askpass will create new if needed (ex multiple devices).
 			rm '/luks_passfifo'
+		fi
+
+		if use gpg; then
+			run cryptsetup luksOpen ${cryptsetup_args} "${enc_dev}" "${dev_name}" < /root/key
 		else
 			run cryptsetup luksOpen ${cryptsetup_args} "${enc_dev}" "${dev_name}"
 		fi
 		enc_num="$((enc_num+1))"
 	done
+
+	if [ -f /root/key ]; then
+		run rm /root/key
+	fi
 }
 
 InitializeLVM() {
