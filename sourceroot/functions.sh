@@ -37,6 +37,7 @@ run() {
 	else
 		eerror "'$@' failed."
 		echo "Failed: '$@'" >> /init.log
+		echo "$@" >> /.ash_history
 		rescueshell
 	fi
 }
@@ -57,6 +58,87 @@ resolve_device() {
 			fi
 		;;
 	esac
+}
+
+process_commandline_options() {
+	for i in $(cat /proc/cmdline); do
+		case "${i}" in
+			initramfsdebug)
+				set -x
+			;;
+			root\=*)
+				root=$(get_opt $i)
+			;;
+			init\=*)
+				init=$(get_opt $i)
+			;;
+			enc_root\=*)
+				enc_root=$(get_opt $i)
+			;;
+			luks)
+				luks=true
+			;;
+			lvm)
+				lvm=true
+			;;
+			softraid)
+				softraid=true
+			;;
+			rescueshell)
+				rescueshell=true
+			;;
+			swsusp)
+				swsusp=true
+			;;
+			uswsusp)
+				uswsusp=true
+			;;
+			tuxonice)
+				tuxonice=true
+			;;
+			resume\=*)
+				resume=$(get_opt $i)
+			;;
+			rootfstype\=*)
+				rootfstype=$(get_opt $i)
+			;;
+	
+			rootflags\=*)
+				rootfsmountparams="-o $(get_opt $i)"
+			;;
+	
+			ro|rw)
+				root_rw_ro=$i
+			;;
+			sshd)
+				sshd=true
+			;;
+			sshd_wait\=*)
+				sshd_wait=$(get_opt $i)
+			;;
+			sshd_port\=*)
+				sshd_port=$(get_opt $i)
+			;;
+			sshd_interface\=*)
+				sshd_interface=$(get_opt $i)
+			;;
+			sshd_ipv4\=*)
+				sshd_ipv4=$(get_opt $i)
+			;;
+			sshd_ipv4_gateway\=*)
+				sshd_ipv4_gateway=$(get_opt $i)
+			;;
+			rootdelay\=*)
+				rootdelay=$(get_opt $i)
+			;;
+			mdev)
+				mdev=true
+			;;
+			luks_trim)
+				luks_trim=true
+			;;
+		esac
+	done
 }
 
 use() {
@@ -122,15 +204,17 @@ InitializeLUKS() {
 
 	musthave enc_root
 	
-	local IFS=":"
 	local enc_num='1'
 	local dev_name="enc_root"
+	# We will use : to separate devices but we need normal IFS inside the for loop anyway.
+	local IFS=":"
 	for enc_dev in ${enc_root}; do
+		IFS="${default_ifs}"
 		if ! [ "${enc_num}" = '1' ]; then
 			dev_name="enc_root${enc_num}"
 		fi
 
-		resolve_device "${enc_dev}"
+		resolve_device enc_dev
 
 		einfo "Opening encrypted partition '${enc_dev##*/}' and mapping to '/dev/mapper/${dev_name}'."
 
@@ -138,12 +222,18 @@ InitializeLUKS() {
 		run echo -e "#!/bin/sh\nexit 0" > /sbin/udevadm
 		run chmod 755 /sbin/udevadm
 
-		local crypsetup_args=""
+		local cryptsetup_args=""
 		if use luks_trim; then
 			cryptsetup_args="${cryptsetup_args} --allow-discards"
 		fi
 
-		run cryptsetup ${cryptsetup_args} luksOpen "${enc_dev}" "${dev_name}"
+		if use sshd; then
+			askpass "Enter passphrase for ${enc_dev}: " | run cryptsetup --tries 1 --key-file=- luksOpen ${cryptsetup_args} "${enc_dev}" "${dev_name}"
+			# Remove the fifo, askpass will create new if needed (ex multiple devices).
+			rm '/luks_passfifo'
+		else
+			run cryptsetup luksOpen ${cryptsetup_args} "${enc_dev}" "${dev_name}"
+		fi
 		enc_num="$((enc_num+1))"
 	done
 }
@@ -264,7 +354,8 @@ cleanup() {
 		if [ -n "${sshd_ipv4_gateway}" ]; then
 			run ip route del default via "${sshd_ipv4_gateway}" dev "${sshd_interface}"
 		fi
-		run ip addr del "${sshd_ipv4}" dev "${sshd_interface}" > /dev/null 2>&1
+		run ip addr del "${sshd_ipv4}" dev "${sshd_interface}"
+		run ip link set down dev "${sshd_interface}"
 	fi
 }
 
